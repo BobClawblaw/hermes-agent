@@ -35,7 +35,11 @@ from utils import base_url_host_matches, base_url_hostname, env_int
 
 
 def _normalize_custom_provider_name(value: str) -> str:
-    return value.strip().lower().replace(" ", "-")
+    import re
+    raw = value.strip().lower()
+    slug = re.sub(r"[^a-z0-9._-]+", "-", raw).strip("-")
+    slug = re.sub(r"-{2,}", "-", slug)
+    return slug
 
 
 def _loopback_hostname(host: str) -> bool:
@@ -616,10 +620,12 @@ def _get_named_custom_provider(requested_provider: str) -> Optional[Dict[str, An
             continue
         name_norm = _normalize_custom_provider_name(name)
         menu_key = f"custom:{name_norm}"
+        menu_key_norm = _normalize_custom_provider_name(menu_key)
         provider_key = str(entry.get("provider_key", "") or "").strip()
         provider_key_norm = _normalize_custom_provider_name(provider_key) if provider_key else ""
         provider_menu_key = f"custom:{provider_key_norm}" if provider_key_norm else ""
-        if requested_norm not in {name_norm, menu_key, provider_key_norm, provider_menu_key}:
+        provider_menu_key_norm = _normalize_custom_provider_name(provider_menu_key) if provider_menu_key else ""
+        if requested_norm not in {name_norm, menu_key_norm, provider_key_norm, provider_menu_key_norm}:
             continue
         result = {
             "name": name.strip(),
