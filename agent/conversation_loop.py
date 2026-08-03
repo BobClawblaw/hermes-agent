@@ -4759,8 +4759,64 @@ def run_conversation(
                                 "failed": True,
                                 "compression_exhausted": True,
                             }
-                        _retry.restart_with_compressed_messages = True
-                        break
+                        # Also compress the message history so the output-cap
+                        # retry does not just spin on max_tokens alone.  The
+                        # compressor drops the middle window, freeing enough
+                        # tokens for the total to fit inside context_length.
+                        # (#55546)
+                        original_len = len(messages)
+                        original_tokens = estimate_messages_tokens_rough(messages)
+                        _overflow_input = messages
+                        messages, active_system_prompt = agent._compress_context(
+                            messages, system_message,
+                            approx_tokens=estimate_request_tokens_rough(api_messages, tools=agent.tools or None),
+                            task_id=effective_task_id,
+                        )
+                        if messages is _overflow_input and compression_skipped_due_to_lock(agent):
+                            compression_attempts -= 1
+                            agent._persist_session(messages, conversation_history)
+                            return _compression_deferred_result(
+                                agent, messages, api_call_count
+                            )
+                        conversation_history = conversation_history_after_compression(
+                            agent, messages, conversation_history
+                        )
+                        new_tokens = estimate_messages_tokens_rough(messages)
+                        approx_tokens = new_tokens
+                        if len(messages) < original_len or (new_tokens > 0 and new_tokens < original_tokens * 0.95):
+                            if len(messages) < original_len:
+                                agent._buffer_status(COMPRESSION_RETRY_MESSAGES_STATUS_TEMPLATE.format(before=original_len, after=len(messages)))
+                            elif new_tokens > 0 and new_tokens < original_tokens * 0.95:
+                                agent._buffer_status(COMPRESSION_RETRY_TOKENS_STATUS_TEMPLATE.format(before=original_tokens, after=new_tokens))
+                            _retry.restart_with_compressed_messages = True
+                            break
+                        # Compression did not reduce the request further.
+                        # Strip retained vision payloads and retry.
+                        if agent._try_strip_image_parts_from_tool_messages(
+                            api_messages,
+                            remember_model=False,
+                        ):
+                            agent._buffer_status(
+                                "📐 Compression could not reduce the request further — "
+                                "removed retained vision payloads and retrying..."
+                            )
+                            continue
+                        agent._flush_status_buffer()
+                        agent._vprint(f"{agent.log_prefix}❌ Output-cap retry: cannot compress further.", force=True)
+                        agent._vprint(f"{agent.log_prefix}   💡 Try /new to start a fresh conversation, or /compress to retry compression.", force=True)
+                        logger.error("%sOutput-cap retry cannot compress further.", agent.log_prefix)
+                        agent._persist_session(messages, conversation_history)
+                        _final_response = "Output-cap error: cannot compress further."
+                        return {
+                            "final_response": _final_response,
+                            "messages": messages,
+                            "completed": False,
+                            "api_calls": api_call_count,
+                            "error": _final_response,
+                            "partial": True,
+                            "failed": True,
+                            "compression_exhausted": True,
+                        }
 
                     # The error is output-cap-shaped (about max_tokens being
                     # too large) but the provider's wording didn't let us parse
