@@ -232,9 +232,25 @@ if [ -n "$INSTALL_REF" ]; then
   # Peel to ^{commit} in both cases: an annotated tag fetches as a tag OBJECT,
   # and using it directly fails later with "trying to write non-commit object
   # ... to branch 'refs/heads/main'".
-  if git -C "$UPSTREAM_REPO" fetch -q "$UPSTREAM_URL" "$INSTALL_REF" 2>/dev/null; then
+  # The host git fetch below runs WITHOUT the sandbox, so a transient
+  # TLS/transport drop from the runner to GitHub shows up here as a spurious
+  # "could not resolve upstream ref" for a tag that exists on the remote
+  # (v2026.6.6 etc.). Retry the fetch a few times before giving up, so an
+  # intermittent host-network blip does not fail an otherwise-fine leg -- this
+  # has been the recurring red cause on CI independent of any npm issue.
+  fetch_ref() {
+    local i
+    for i in 1 2 3 4 5; do
+      if git -C "$UPSTREAM_REPO" fetch -q "$UPSTREAM_URL" "$1" 2>/dev/null; then
+        return 0
+      fi
+      sleep 2
+    done
+    return 1
+  }
+  if fetch_ref "$INSTALL_REF"; then
     UPSTREAM_COMMIT="$(git -C "$UPSTREAM_REPO" rev-parse "FETCH_HEAD^{commit}")"
-  elif git -C "$UPSTREAM_REPO" fetch -q "$UPSTREAM_URL" refs/heads/main \
+  elif fetch_ref refs/heads/main \
     && UPSTREAM_COMMIT="$(git -C "$UPSTREAM_REPO" rev-parse --verify -q "$INSTALL_REF^{commit}")"; then
     :
   else

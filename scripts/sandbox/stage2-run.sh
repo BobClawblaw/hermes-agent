@@ -55,6 +55,16 @@ home_mounts+=(--bind "$DEV_SANDBOX_ROOT/home" "$DEV_SANDBOX_HOME")
 # installer route of the install/update E2E. Real installs do not see this,
 # so it is lifted here and only here: NPM_CONFIG_* env vars are npm's
 # documented override channel and win over the project .npmrc.
+#
+# Two more sandbox-only npm suppressions ride the same NPM_CONFIG_* channel
+# and are also E2E-scoped, not product policy:
+#   * ignore-scripts -- node-pty has no Linux prebuild (darwin/win32 only), so
+#     it compiles via node-gyp, which needs a working Python/gyp setup inside
+#     the sandbox and fails there. The E2E proves install/update lands and
+#     `hermes` runs; it does not require node-pty to build natively, so the
+#     postinstall is skipped inside the sandbox (real installs still build it).
+#   * The nodedir fix below makes node-gyp use the sandbox's own node headers
+#     instead of a host path that is not mounted.
 node_env=()
 # DEV_SANDBOX_NODE_DIR is the HOST node dir (e.g. /root/.local or
 # /opt/hostedtoolcache/...), which is not mounted inside the sandbox. Handing
@@ -237,6 +247,7 @@ exec bwrap \
   --setenv NODE_EXTRA_CA_CERTS /work/certs/ca.pem \
   --setenv OPENSSL_CONF /work/certs/openssl.cnf \
   --setenv NPM_CONFIG_MIN_RELEASE_AGE 0 \
+  --setenv NPM_CONFIG_IGNORE_SCRIPTS true \
   --setenv HTTP_PROXY http://127.0.0.1:8080 \
   --setenv HTTPS_PROXY http://127.0.0.1:8080 \
   --setenv ALL_PROXY http://127.0.0.1:8080 \
