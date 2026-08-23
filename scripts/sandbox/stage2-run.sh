@@ -47,6 +47,14 @@ if [ "$home_parent" != / ]; then
 fi
 home_mounts+=(--bind "$DEV_SANDBOX_ROOT/home" "$DEV_SANDBOX_HOME")
 
+# The repo's .npmrc sets min-release-age=14 (a supply-chain age gate). Inside
+# the sandbox that makes npm open one short TLS connection per candidate
+# release during `npm install`; the fan-out runs ahead of the single-threaded
+# proxy/slirp NAT and a fraction of the handshakes drop (proxy.log
+# SSLEOFError) on GitHub runners, hard-failing the browser-tools step on the
+# installer route of the install/update E2E. Real installs do not see this,
+# so it is lifted here and only here: NPM_CONFIG_* env vars are npm's
+# documented override channel and win over the project .npmrc.
 node_env=()
 if [ -n "${DEV_SANDBOX_NODE_DIR:-}" ]; then
   node_env+=(--setenv npm_config_nodedir "$DEV_SANDBOX_NODE_DIR")
@@ -218,6 +226,7 @@ exec bwrap \
   --setenv GIT_SSL_CAINFO /work/certs/ca.pem \
   --setenv NODE_EXTRA_CA_CERTS /work/certs/ca.pem \
   --setenv OPENSSL_CONF /work/certs/openssl.cnf \
+  --setenv NPM_CONFIG_MIN_RELEASE_AGE 0 \
   --setenv HTTP_PROXY http://127.0.0.1:8080 \
   --setenv HTTPS_PROXY http://127.0.0.1:8080 \
   --setenv ALL_PROXY http://127.0.0.1:8080 \
