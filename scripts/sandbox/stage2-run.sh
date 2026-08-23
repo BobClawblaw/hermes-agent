@@ -56,7 +56,17 @@ home_mounts+=(--bind "$DEV_SANDBOX_ROOT/home" "$DEV_SANDBOX_HOME")
 # so it is lifted here and only here: NPM_CONFIG_* env vars are npm's
 # documented override channel and win over the project .npmrc.
 node_env=()
-if [ -n "${DEV_SANDBOX_NODE_DIR:-}" ]; then
+# DEV_SANDBOX_NODE_DIR is the HOST node dir (e.g. /root/.local or
+# /opt/hostedtoolcache/...), which is not mounted inside the sandbox. Handing
+# it to npm as npm_config_nodedir makes node-gyp read node headers from a path
+# that does not exist here, so node-pty (and any other native module) fails to
+# build on the E2E re-run over the current tree. Prefer the sandbox's own node
+# dir, which is mounted and carries config.gypi + headers, and only fall back
+# to the host value when there is no sandbox node yet (old-release installs).
+sandbox_node_dir="$DEV_SANDBOX_HOME/.hermes/node"
+if [ -d "$sandbox_node_dir" ]; then
+  node_env+=(--setenv npm_config_nodedir "$sandbox_node_dir")
+elif [ -n "${DEV_SANDBOX_NODE_DIR:-}" ]; then
   node_env+=(--setenv npm_config_nodedir "$DEV_SANDBOX_NODE_DIR")
 fi
 electron_env=()
