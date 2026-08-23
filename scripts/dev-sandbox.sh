@@ -239,13 +239,14 @@ if [ -n "$INSTALL_REF" ]; then
   # intermittent host-network blip does not fail an otherwise-fine leg -- this
   # has been the recurring red cause on CI independent of any npm issue.
   fetch_ref() {
-    local i
+    local i err
     for i in 1 2 3 4 5 6; do
-      if git -C "$UPSTREAM_REPO" fetch -q "$UPSTREAM_URL" "$1" 2>/dev/null; then
-        return 0
-      fi
+      err="$(git -C "$UPSTREAM_REPO" fetch -q "$UPSTREAM_URL" "$1" 2>&1)" && return 0
       sleep 5
     done
+    # Surface the real transport error: "could not resolve upstream ref" alone
+    # does not say whether the tag is missing or the runner is network-failing.
+    [ -n "$err" ] && printf '[sandbox] upstream fetch failed repeatedly: %s\n' "$err" >&2
     return 1
   }
   if fetch_ref "$INSTALL_REF"; then
