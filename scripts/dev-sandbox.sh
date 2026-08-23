@@ -240,11 +240,11 @@ if [ -n "$INSTALL_REF" ]; then
   # has been the recurring red cause on CI independent of any npm issue.
   fetch_ref() {
     local i
-    for i in 1 2 3 4 5; do
+    for i in 1 2 3 4 5 6; do
       if git -C "$UPSTREAM_REPO" fetch -q "$UPSTREAM_URL" "$1" 2>/dev/null; then
         return 0
       fi
-      sleep 2
+      sleep 5
     done
     return 1
   }
