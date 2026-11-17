@@ -1082,14 +1082,22 @@ def _wsl_powershell_player_cmd(file_path: str) -> Optional[list[str]]:
         return None  # WSL path resolution failed; fall through to ffplay/aplay
 
 
+# Containers macOS's afplay cuts short (Ogg Opus: ~2 s of audio, exit status 0).
+_AFPLAY_TRUNCATES = (".ogg", ".oga", ".opus")
+
+
 def _system_player_candidates(file_path: str) -> list[list[str]]:
     """Ordered system-player commands for this platform."""
     system = platform.system()
+    ffplay = ["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet", file_path]
+    if system == "Darwin" and file_path.lower().endswith(_AFPLAY_TRUNCATES):
+        # afplay stops Ogg Opus after ~2 s yet exits 0, so it would never fall through: ffplay first.
+        return [ffplay, ["afplay", file_path]]
     players: list[list[str]] = [["afplay", file_path]] if system == "Darwin" else []
     ps_cmd = _wsl_powershell_player_cmd(file_path) if system == "Linux" else None
     if ps_cmd:
         players.append(ps_cmd)
-    players.append(["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet", file_path])
+    players.append(ffplay)
     if system == "Linux":
         players.append(["aplay", "-q", file_path])
     return players

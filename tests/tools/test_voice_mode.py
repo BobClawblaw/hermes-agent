@@ -614,6 +614,18 @@ class TestMacOSAudioOutputPolicy:
         assert popen_cmds, "expected a system player to be invoked"
         assert popen_cmds[0][0] == "afplay"
 
+    def test_ogg_prefers_ffplay_on_macos(self, monkeypatch):
+        """afplay cuts Ogg Opus short and exits 0, so on macOS .ogg/.opus go to ffplay first, afplay as fallback."""
+        import tools.voice_mode as vm
+
+        monkeypatch.setattr(vm.platform, "system", lambda: "Darwin")
+        for name in ("reply.ogg", "REPLY.OPUS", "note.oga"):
+            players = vm._system_player_candidates(name)
+            assert [p[0] for p in players] == ["ffplay", "afplay"]
+            assert players[0][-1] == name
+        assert vm._system_player_candidates("reply.mp3")[0][0] == "afplay"
+        assert vm._system_player_candidates("reply.wav")[0][0] == "afplay"
+
     @pytest.mark.platforms("macos")
     def test_play_beep_routes_through_afplay_on_macos(self, monkeypatch):
         """On macOS, beeps synthesize with numpy but play via the tempfile/afplay path."""
